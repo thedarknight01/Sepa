@@ -1,0 +1,131 @@
+{% extends "layout.html" %}
+{% block title %}Send Session: {{ channel }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <p class="text-center text-gray-500 dark:text-gray-400">Your session is live for channel: <strong class="text-gray-800 dark:text-gray-200">{{ channel }}</strong></p>
+    
+    <div class="bg-gray-100 dark:bg-gray-700 p-6 rounded-lg border border-gray-200 dark:border-gray-600 space-y-4">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Tell the receiver to join channel <strong class="text-black dark:text-white">{{ channel }}</strong> and use this 6-digit code:</label>
+        
+        <input type="text" readonly id="code-display" value="Generating..." class="w-full p-4 bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-500 text-3xl font-bold tracking-widest text-center cursor-copy" onclick="this.select(); document.execCommand('copy'); showCopied(this);">
+        
+        <p id="copy-notice" class="text-center text-green-600 dark:text-green-400 opacity-0 transition-opacity duration-300">Copied to clipboard!</p>
+    </div>
+    
+    <div>
+        <label for="text-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type your secure text (updates live):</label>
+        <textarea id="text-input" rows="10" class="mt-1 w-full p-4 bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Type here... recipient will see this live."></textarea>
+    </div>
+    
+    <div id="status" class="text-center text-gray-500 dark:text-gray-400">Connecting...</div>
+</div>
+
+<script>
+    const channel = "{{ channel }}".trim().toLowerCase();
+    const aesKeyB64 = location.hash.substring(1);
+    const textInput = document.getElementById("text-input");
+    const status = document.getElementById("status");
+    const codeDisplay = document.getElementById('code-display');
+
+    if (!aesKeyB64) {
+        document.getElementById("status").textContent = "Error: No session key found. Please create a new session.";
+        textInput.disabled = true;
+    }
+    
+    function showCopied(element) {
+        const notice = document.getElementById("copy-notice");
+        notice.style.opacity = 1;
+        setTimeout(() => { notice.style.opacity = 0; }, 2000);
+    }
+    
+    // --- Secure Code Generation ---
+    const randomValues = new Uint32Array(1);
+    window.crypto.getRandomValues(randomValues);
+    const sessionCode = (randomValues[0] % 900000 + 100000).toString();
+    codeDisplay.value = sessionCode;
+
+    // Connect to the Socket.IO server
+    const socket = io();
+
+    socket.on('connect', () => {
+        status.textContent = "Connected. Hosting session...";
+        socket.emit('host_session', { 
+            // FIX: Key name changed to 'channel'
+            channel: channel, 
+            code: sessionCode, 
+            sid: socket.id 
+        });
+    });
+    
+    socket.on('host_success', () => {
+        status.textContent = "Session is live. Waiting for receiver...";
+    });
+
+    socket.on('host_error', (data) => {
+        status.textContent = `Error: ${data.message}`;
+        textInput.disabled = true;
+    });
+
+    socket.on('new_receiver_joined', (data) => {
+        status.textContent = `New receiver (${data.sid.substring(0,4)}) authenticated. Waiting for public key...`;
+    });
+    
+    socket.on('server_announce_receiver', async (data) => {
+        const receiver_sid = data.sid;
+        const receiver_pubKey = data.publicKey;
+        
+        status.textContent = `Public key received from ${receiver_sid.substring(0,4)}. Encrypting...`;
+        
+        try {
+            const encryptedKey = await sepa.crypto.encryptAesKey(aesKeyB64, receiver_pubKey);
+            
+            socket.emit('sender_offer', {
+                target_sid: receiver_sid,
+                encryptedKey: encryptedKey
+            });
+            
+            status.textContent = `Key sent. Session is live with ${receiver_sid.substring(0,4)}.`;
+        } catch (err) {
+            console.error("Failed to encrypt/send key:", err);
+            status.textContent = "Error sending key to receiver.";
+        }
+    });
+
+    let updateTimeout;
+    textInput.oninput = () => {
+        status.textContent = "Encrypting...";
+        clearTimeout(updateTimeout);
+        updateTimeout = setTimeout(async () => {
+            try {
+                const text = textInput.value;
+                let ciphertext = "";
+                if (text) {
+                    encrypted = await sepa.crypto.encryptText(text, aesKeyB64);
+                    ciphertext = encrypted;
+                }
+                
+                socket.emit('update_text', {
+                    // FIX: Key name changed to 'channel'
+                    channel: channel,
+                    ciphertext: ciphertext
+                });
+                
+                status.textContent = "Saved (live)";
+            } catch (err) {
+                console.error("Encryption/Send failed:", err);
+                status.textContent = "Error saving. Check console.";
+            }
+        }, 300);
+    };
+    
+    window.addEventListener('beforeunload', (e) => {
+        socket.emit('clear_session', { 
+            // FIX: Key name changed to 'channel'
+            channel: channel, 
+            sid: socket.id 
+        });
+    });
+
+</script>
+{% endblock %}

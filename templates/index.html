@@ -1,0 +1,97 @@
+{% extends "layout.html" %}
+{% block title %}Sepa (Secure Paste){% endblock %}
+
+{% block content %}
+<p class="text-center text-gray-500 dark:text-gray-400 mb-8">
+    A real-time, end-to-end encrypted text sharing tool.
+    <br>Sessions are temporary and password-protected.
+</p>
+
+<div class="mb-6 border-b border-gray-200 dark:border-gray-700">
+    <nav class="flex -mb-px" aria-label="Tabs">
+        <button id="tab-send" onclick="showTab('send')" class="w-1/2 py-4 px-1 text-center border-b-2 font-medium text-lg text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400">
+            Send
+        </button>
+        <button id="tab-receive" onclick="showTab('receive')" class="w-1/2 py-4 px-1 text-center border-b-2 font-medium text-lg text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600">
+            Receive
+        </button>
+    </nav>
+</div>
+
+<div id="panel-send" class="space-y-6">
+    <p class="text-sm text-center text-gray-500 dark:text-gray-400">Create a new secure channel. Choose a memorable name.</p>
+    <div>
+        <label for="channel-send" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Channel Name</label>
+        <input type="text" id="channel-send" class="mt-1 block w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., project-delta">
+    </div>
+    <button id="btn-send" class="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+        Create Send Session
+    </button>
+</div>
+
+<div id="panel-receive" class="hidden space-y-6">
+    <p class="text-sm text-center text-gray-500 dark:text-gray-400">Join an existing secure channel.</p>
+    <div>
+        <label for="channel-receive" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Channel Name</label>
+        <input type="text" id="channel-receive" class="mt-1 block w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., project-delta">
+    </div>
+    <button id="btn-receive" class="w-full flex items-center justify-center gap-2 bg-green-600 text-white p-3 rounded-lg font-bold hover:bg-green-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+        Join Receive Session
+    </button>
+</div>
+
+
+<script>
+    // --- Tab Logic ---
+    const tabSend = document.getElementById('tab-send');
+    const tabReceive = document.getElementById('tab-receive');
+    const panelSend = document.getElementById('panel-send');
+    const panelReceive = document.getElementById('panel-receive');
+    
+    function showTab(tab) {
+        if (tab === 'send') {
+            panelSend.classList.remove('hidden');
+            panelReceive.classList.add('hidden');
+            tabSend.classList.add('text-blue-600', 'dark:text-blue-400', 'border-blue-600', 'dark:border-blue-400');
+            tabReceive.classList.remove('text-blue-600', 'dark:text-blue-400', 'border-blue-600', 'dark:border-blue-400');
+        } else {
+            panelReceive.classList.remove('hidden');
+            panelSend.classList.add('hidden');
+            tabReceive.classList.add('text-blue-600', 'dark:text-blue-400', 'border-blue-600', 'dark:border-blue-400');
+            tabSend.classList.remove('text-blue-600', 'dark:text-blue-400', 'border-blue-600', 'dark:border-blue-400');
+        }
+    }
+
+    // --- Button Logic (with sanitize fix) ---
+    const channelSendInput = document.getElementById('channel-send');
+    const channelReceiveInput = document.getElementById('channel-receive');
+    
+    function sanitizeChannel(channel) {
+        // Enforce lowercase, remove whitespace, allow only letters, numbers, and dashes
+        return channel.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    }
+
+    document.getElementById('btn-send').onclick = async () => {
+        const channel = sanitizeChannel(channelSendInput.value);
+        if (!channel) return alert("Please enter a valid channel name (letters, numbers, and dashes only).");
+        
+        try {
+            const keyB64 = await sepa.crypto.generateAesKey();
+            // Redirect to the /send/ URL
+            location.href = `/send/${channel}#${keyB64}`;
+        } catch (err) {
+            console.error("Failed to generate key:", err);
+            alert("Error creating session. See console.");
+        }
+    };
+
+    document.getElementById('btn-receive').onclick = () => {
+        const channel = sanitizeChannel(channelReceiveInput.value);
+        if (!channel) return alert("Please enter a valid channel name.");
+         // Redirect to the /receive/ URL
+        location.href = `/receive/${channel}`;
+    };
+    
+    channelSendInput.focus();
+</script>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "layout.html" %}
+{% block title %}Receive Session: {{ channel }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <div id="auth-modal">
+        <h2 class="text-2xl font-bold mb-4 text-center">Join Channel: {{ channel }}</h2>
+        <p class="text-gray-500 dark:text-gray-400 mb-4 text-center">
+            Enter the 6-digit code from the sender to connect.
+        </p>
+        <input type="text" id="code-input" class="w-full p-4 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-green-500 focus:outline-none text-2xl tracking-widest text-center" placeholder="123456" maxlength="6">
+        <button id="auth-btn" class="w-full flex items-center justify-center gap-2 bg-green-600 text-white font-bold py-3 px-6 rounded-md hover:bg-green-700 transition duration-300 mt-6">
+            <span id="auth-btn-text">Connect Securely</span>
+            <div id="auth-spinner" class="spinner hidden"></div>
+        </button>
+        <p id="auth-error" class="text-center text-red-500 mt-4"></p>
+    </div>
+
+    <div id="live-view" class="hidden">
+        <h2 class="text-2xl font-bold mb-4">Live Session: {{ channel }}</h2>
+        <div id="status" class="text-center text-gray-500 dark:text-gray-400 mb-4">Connecting...</div>
+        <pre id="output" class="w-full p-6 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 rounded-md border border-gray-300 dark:border-gray-700 overflow-x-auto min-h-[300px] whitespace-pre-wrap break-words">Waiting to connect...</pre>
+    </div>
+</div>
+
+<script>
+    const channel = "{{ channel }}".trim().toLowerCase();
+    const authModal = document.getElementById("auth-modal");
+    const liveView = document.getElementById("live-view");
+    const codeInput = document.getElementById("code-input");
+    const authBtn = document.getElementById("auth-btn");
+    const authBtnText = document.getElementById("auth-btn-text");
+    const authSpinner = document.getElementById("auth-spinner");
+    const authError = document.getElementById("auth-error");
+    const output = document.getElementById("output");
+    const status = document.getElementById("status");
+
+    let sessionAesKey = null;
+    let socket;
+    let rsaPrivateKey;
+    
+    authBtn.onclick = () => {
+        const code = codeInput.value;
+        if (code.length !== 6 || !/^\d+$/.test(code)) {
+            authError.textContent = "Please enter a valid 6-digit code.";
+            return;
+        }
+        authError.textContent = "";
+        authBtn.disabled = true;
+        authBtnText.classList.add('hidden');
+        authSpinner.classList.remove('hidden');
+        
+        startSecureConnection(code);
+    };
+
+    async function startSecureConnection(code) {
+        try {
+            status.textContent = "Generating secure keypair...";
+            const { publicKey, privateKey } = await sepa.crypto.generateRsaKeyPair();
+            rsaPrivateKey = privateKey;
+            const publicKeyB64 = await sepa.crypto.exportPublicKeyB64(publicKey);
+            
+            socket = io();
+            
+            socket.on('connect', () => {
+                status.textContent = "Authenticating with 6-digit code...";
+                socket.emit('join_attempt', {
+                    // FIX: Key name changed to 'channel'
+                    channel: channel,
+                    code: code,
+                    sid: socket.id
+                });
+            });
+
+            socket.on('auth_success', () => {
+                authModal.classList.add('hidden');
+                liveView.classList.remove('hidden');
+                status.textContent = "Authenticated! Sending public key...";
+                
+                socket.emit('receiver_hello', {
+                    // FIX: Key name changed to 'channel'
+                    channel: channel,
+                    publicKey: publicKeyB64,
+                    sid: socket.id
+                });
+                
+                status.textContent = "Waiting for sender to send session key...";
+            });
+            
+            socket.on('auth_failed', (data) => {
+                authError.textContent = data.message || "Authentication failed.";
+                authBtn.disabled = false;
+                authBtnText.classList.remove('hidden');
+                authSpinner.classList.add('hidden');
+                socket.disconnect();
+            });
+
+            startSocketListeners();
+
+        } catch (err) {
+            console.error("Key generation failed:", err);
+            authError.textContent = "Error: Could not generate security keys.";
+            authBtn.disabled = false;
+            authBtnText.classList.remove('hidden');
+            authSpinner.classList.add('hidden');
+        }
+    }
+
+    function startSocketListeners() {
+        
+        socket.on('server_deliver_key', async (data) => {
+            if (sessionAesKey) return; 
+            
+            status.textContent = "Receiving encrypted session key...";
+            try {
+                const aesKeyB64 = await sepa.crypto.decryptAesKey(data.encryptedKey, rsaPrivateKey);
+                sessionAesKey = aesKeyB64; 
+                
+                status.textContent = "Key received! Session is live.";
+                output.textContent = "Secure connection established. Waiting for text...";
+                output.classList.remove("text-gray-500", "dark:text-gray-400");
+
+            } catch (err) {
+                console.error("Failed to decrypt session key:", err);
+                status.textContent = "Fatal: Key decryption failed.";
+                output.textContent = "DECRYPTION FAILED.\nCould not establish secure session.";
+                output.classList.add("text-red-400", "dark:text-red-500");
+                socket.disconnect();
+            }
+        });
+
+        socket.on('text_updated', async (data) => {
+            if (!sessionAesKey) {
+                status.textContent = "Warning: Received text before key. Waiting...";
+                return;
+            }
+            
+            status.textContent = "Receiving data...";
+            const { ciphertext } = data;
+            
+            if (!ciphertext) {
+                output.textContent = "";
+                status.textContent = "Live (Cleared)";
+                return;
+            }
+
+            try {
+                const plaintext = await sepa.crypto.decryptText(ciphertext, sessionAesKey);
+                output.textContent = plaintext;
+                output.classList.remove("text-gray-500", "dark:text-gray-400");
+                status.textContent = "Live (Updated)";
+            } catch (err) {
+                console.error("Decryption failed:", err);
+                output.textContent = "DECRYPTION FAILED.\nData may be corrupt.";
+                output.classList.add("text-red-400", "dark:text-red-500");
+                status.textContent = "Decryption Error!";
+            }
+        });
+
+        socket.on('session_ended', () => {
+            output.textContent = "Session expired or disconnected by sender.";
+            output.classList.add("text-gray-500", "dark:text-gray-400");
+            status.textContent = "Session Ended.";
+            socket.disconnect();
+        });
+
+        socket.on('disconnect', () => {
+            if (status.textContent !== "Session Ended.") {
+                status.textContent = "Disconnected from server.";
+            }
+        });
+    }
+
+</script>
+{% endblock %}
