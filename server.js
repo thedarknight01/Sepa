@@ -13,6 +13,13 @@ const apiLimiter = rateLimit({
   message: 'Too many requests, please try again later.'
 });
 
+// Rate limiting for page routes (more lenient)
+const pageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // Limit each IP to 500 page views per windowMs
+  message: 'Too many requests, please try again later.'
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -65,12 +72,12 @@ app.get('/api/paste/:id', (req, res) => {
 });
 
 // Serve the main page
-app.get('/', (req, res) => {
+app.get('/', pageLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Serve paste view page
-app.get('/paste/:id', (req, res) => {
+app.get('/paste/:id', pageLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
