@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sepa
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn --worker-class eventlet -w 1 app:app"
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true  # This automatically creates a secure secret key for you
+      - key: PYTHON_VERSION
+        value: 3.12.1        # Or whatever Python version you are using
