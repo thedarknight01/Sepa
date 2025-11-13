@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sepa - Share Text Between Devices</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔒 Sepa</h1>
+            <p class="subtitle">Secure platform for copy paste</p>
+        </header>
+
+        <main id="mainContent">
+            <!-- Create Paste View -->
+            <div id="createView" class="view active">
+                <div class="card">
+                    <h2>Share Text</h2>
+                    <p class="description">Paste your text below and get a shareable link</p>
+                    <textarea 
+                        id="pasteContent" 
+                        placeholder="Enter or paste your text here..."
+                        rows="10"
+                    ></textarea>
+                    <button id="createBtn" class="btn btn-primary">Create Paste</button>
+                    <div id="createError" class="error hidden"></div>
+                </div>
+            </div>
+
+            <!-- Success View -->
+            <div id="successView" class="view">
+                <div class="card success-card">
+                    <h2>✓ Paste Created!</h2>
+                    <p class="description">Share this link to access your text from any device</p>
+                    <div class="url-container">
+                        <input 
+                            type="text" 
+                            id="pasteUrl" 
+                            readonly 
+                            class="url-input"
+                        >
+                        <button id="copyBtn" class="btn btn-secondary">Copy</button>
+                    </div>
+                    <div id="copySuccess" class="success-message hidden">✓ Copied to clipboard!</div>
+                    <button id="newPasteBtn" class="btn btn-text">Create Another Paste</button>
+                </div>
+            </div>
+
+            <!-- View Paste -->
+            <div id="viewPaste" class="view">
+                <div class="card">
+                    <h2>Paste Content</h2>
+                    <div id="viewError" class="error hidden"></div>
+                    <div id="viewContent" class="view-content">
+                        <pre id="pasteText"></pre>
+                        <button id="copyContentBtn" class="btn btn-primary">Copy Content</button>
+                        <div id="copyContentSuccess" class="success-message hidden">✓ Copied to clipboard!</div>
+                    </div>
+                    <button id="createNewBtn" class="btn btn-text">Create New Paste</button>
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Share text securely between your devices</p>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
